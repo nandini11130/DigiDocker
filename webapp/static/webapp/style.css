@@ -1,0 +1,6 @@
+/* Small tweaks on top of Bootstrap - kept intentionally minimal. */
+.badge-verified { background-color: #198754; }
+.badge-unverified { background-color: #6c757d; }
+.badge-pending { background-color: #fd7e14; }
+.doc-card { transition: box-shadow .15s; }
+.doc-card:hover { box-shadow: 0 0 0 .15rem rgba(13,110,253,.15); }

@@ -1,0 +1,103 @@
+{% extends "webapp/base.html" %}
+{% block title %}DigiDocker - Login{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+  <div class="col-md-6">
+    <ul class="nav nav-tabs" role="tablist">
+      <li class="nav-item"><button class="nav-link active" data-bs-toggle="tab" data-bs-target="#login-pane">Login</button></li>
+      <li class="nav-item"><button class="nav-link" data-bs-toggle="tab" data-bs-target="#register-pane">Register (Student)</button></li>
+    </ul>
+    <div class="tab-content border border-top-0 p-4 rounded-bottom bg-white">
+      <div class="tab-pane fade show active" id="login-pane">
+        <form id="login-form">
+          <div class="mb-3">
+            <label class="form-label">Username</label>
+            <input class="form-control" name="username" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Password</label>
+            <input type="password" class="form-control" name="password" required>
+          </div>
+          <div id="login-error" class="alert alert-danger d-none"></div>
+          <button class="btn btn-primary w-100" type="submit">Login</button>
+        </form>
+      </div>
+      <div class="tab-pane fade" id="register-pane">
+        <p class="text-muted small">Only student accounts can self-register. Issuer (college) staff accounts are created by a platform admin.</p>
+        <form id="register-form">
+          <div class="mb-3">
+            <label class="form-label">Full name / username</label>
+            <input class="form-control" name="username" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Email</label>
+            <input type="email" class="form-control" name="email" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Roll number</label>
+            <input class="form-control" name="roll_number" required>
+          </div>
+          <div class="mb-3">
+            <label class="form-label">Password</label>
+            <input type="password" class="form-control" name="password" required minlength="8">
+          </div>
+          <div id="register-error" class="alert alert-danger d-none"></div>
+          <div id="register-success" class="alert alert-success d-none"></div>
+          <button class="btn btn-primary w-100" type="submit">Create account</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block scripts %}
+<script>
+if (getAccessToken()) window.location.href = '/dashboard/';
+
+document.getElementById('login-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorBox = document.getElementById('login-error');
+  errorBox.classList.add('d-none');
+  const form = new FormData(e.target);
+  const res = await fetch(`${API}/accounts/login/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ username: form.get('username'), password: form.get('password') }),
+  });
+  if (!res.ok) {
+    errorBox.textContent = 'Invalid username or password.';
+    errorBox.classList.remove('d-none');
+    return;
+  }
+  saveTokens(await res.json());
+  window.location.href = '/dashboard/';
+});
+
+document.getElementById('register-form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorBox = document.getElementById('register-error');
+  const successBox = document.getElementById('register-success');
+  errorBox.classList.add('d-none');
+  successBox.classList.add('d-none');
+  const form = new FormData(e.target);
+  const payload = {
+    username: form.get('username'), email: form.get('email'),
+    roll_number: form.get('roll_number'), password: form.get('password'), role: 'STUDENT',
+  };
+  const res = await fetch(`${API}/accounts/register/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    errorBox.textContent = Object.values(data).flat().join(' ');
+    errorBox.classList.remove('d-none');
+    return;
+  }
+  successBox.textContent = 'Account created! You can log in now.';
+  successBox.classList.remove('d-none');
+  e.target.reset();
+});
+</script>
+{% endblock %}

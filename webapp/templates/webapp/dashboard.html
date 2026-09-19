@@ -1,0 +1,365 @@
+{% extends "webapp/base.html" %}
+{% block title %}DigiDocker - Dashboard{% endblock %}
+{% block content %}
+
+<div id="student-view" class="d-none">
+  <div class="row">
+    <div class="col-md-5">
+      <h5>Upload a document</h5>
+      <p class="text-muted small">Uploads are stored securely as Unverified. Use "Request verification" on a document to have your college/university check and sign it.</p>
+      <form id="upload-form">
+        <div class="mb-2">
+          <label class="form-label">Title</label>
+          <input class="form-control" name="title" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Document type</label>
+          <select class="form-select" name="doc_type" required>
+            <option value="AADHAAR">Aadhaar Card</option>
+            <option value="MARKSHEET">Marksheet</option>
+            <option value="DEGREE">Degree Certificate</option>
+            <option value="CERTIFICATE">Other Certificate</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">File</label>
+          <input type="file" class="form-control" name="file" required>
+        </div>
+        <div id="upload-error" class="alert alert-danger d-none"></div>
+        <button class="btn btn-primary" type="submit">Upload</button>
+      </form>
+    </div>
+    <div class="col-md-7">
+      <h5>My documents</h5>
+      <div id="doc-list"></div>
+    </div>
+  </div>
+</div>
+
+<div id="issuer-view" class="d-none">
+  <div class="row">
+    <div class="col-md-5">
+      <h5>Issue a document to a student</h5>
+      <p class="text-muted small">Signing happens automatically with your issuer's private key — this is the verification, no separate approval step.</p>
+      <form id="issue-form">
+        <div class="mb-2">
+          <label class="form-label">Student roll number</label>
+          <input class="form-control" name="student_roll_number" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Title</label>
+          <input class="form-control" name="title" required>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">Document type</label>
+          <select class="form-select" name="doc_type" required>
+            <option value="AADHAAR">Aadhaar Card</option>
+            <option value="MARKSHEET">Marksheet</option>
+            <option value="DEGREE">Degree Certificate</option>
+            <option value="CERTIFICATE">Other Certificate</option>
+            <option value="OTHER">Other</option>
+          </select>
+        </div>
+        <div class="mb-2">
+          <label class="form-label">File</label>
+          <input type="file" class="form-control" name="file" required>
+        </div>
+        <div id="issue-error" class="alert alert-danger d-none"></div>
+        <div id="issue-success" class="alert alert-success d-none"></div>
+        <button class="btn btn-primary" type="submit">Issue &amp; sign</button>
+      </form>
+    </div>
+    <div class="col-md-7">
+      <h5>Documents issued by my institution</h5>
+      <div id="doc-list-issuer"></div>
+      <h5 class="mt-4">Pending verification requests</h5>
+      <p class="text-muted small">Students asking your institution to check and sign a document they uploaded themselves. Download to inspect it before deciding.</p>
+      <div id="pending-list"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Request verification modal -->
+<div class="modal fade" id="requestModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Request verification</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <p class="small text-muted">Ask an institution to check this document and sign it. They'll see it in their pending queue.</p>
+        <select class="form-select mb-3" id="request-issuer-select"></select>
+        <div id="request-error" class="alert alert-danger d-none"></div>
+        <button class="btn btn-primary w-100" id="request-submit-btn">Send request</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Share modal -->
+<div class="modal fade" id="shareModal" tabindex="-1">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title">Share verified document</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body text-center">
+        <p class="small text-muted">Recruiters can scan the QR or open the link — no login needed. Aadhaar documents only ever show a verified badge; marksheets/certificates also show a view-only preview.</p>
+        <div class="row g-2 justify-content-center mb-3">
+          <div class="col-6">
+            <select id="share-hours" class="form-select form-select-sm">
+              <option value="1">Expires in 1 hour</option>
+              <option value="24" selected>Expires in 24 hours</option>
+              <option value="72">Expires in 3 days</option>
+              <option value="168">Expires in 7 days</option>
+            </select>
+          </div>
+          <div class="col-auto">
+            <button class="btn btn-sm btn-primary" id="generate-btn">Generate link</button>
+          </div>
+        </div>
+        <div id="share-result" class="d-none">
+          <img id="qr-image" class="img-fluid mb-3" alt="QR code">
+          <div class="input-group mb-2">
+            <input type="text" id="verify-link" class="form-control form-control-sm" readonly>
+          </div>
+          <p class="small text-muted mb-3" id="share-meta"></p>
+          <button class="btn btn-sm btn-outline-danger" id="regenerate-btn">Revoke this link</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+let currentDocId = null;
+let requestDocId = null;
+
+function docCardHtml(doc) {
+  return `
+    <div class="card doc-card mb-2">
+      <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <strong>${doc.title}</strong> <span class="text-muted small">(${doc.doc_type})</span><br>
+            <span class="small text-muted">${doc.issuer_name || 'No issuer'} · uploaded ${new Date(doc.uploaded_at).toLocaleDateString()}</span>
+            ${doc.status === 'UNVERIFIED' && doc.review_note ? `<br><span class="small text-danger">${doc.review_note}</span>` : ''}
+          </div>
+          <div class="text-end">
+            ${statusBadge(doc.status)}<br>
+            <button class="btn btn-sm btn-link p-0" onclick="downloadDoc(${doc.id}, '${doc.original_filename}')">Download</button>
+            ${doc.status === 'VERIFIED' ? `<button class="btn btn-sm btn-link p-0 ms-2" onclick="openShare(${doc.id})">Share</button>` : ''}
+            ${doc.status === 'UNVERIFIED' ? `<button class="btn btn-sm btn-link p-0 ms-2" onclick="openRequestModal(${doc.id})">Request verification</button>` : ''}
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function loadDocuments(targetId) {
+  const res = await apiFetch('/documents/');
+  const target = document.getElementById(targetId);
+  if (!res.ok) { target.innerHTML = '<p class="text-danger">Could not load documents.</p>'; return; }
+  const data = await res.json();
+  target.innerHTML = data.results.length
+    ? data.results.map(docCardHtml).join('')
+    : '<p class="text-muted">No documents yet.</p>';
+}
+
+async function downloadDoc(id, filename) {
+  const res = await apiFetch(`/documents/${id}/download/`);
+  if (!res.ok) { alert('Download failed.'); return; }
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename || `document-${id}`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+async function openShare(id) {
+  currentDocId = id;
+  document.getElementById('share-result').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('shareModal')).show();
+}
+
+async function generateShareLink() {
+  if (!currentDocId) return;
+  const hours = document.getElementById('share-hours').value;
+  const res = await apiFetch(`/documents/${currentDocId}/share/regenerate/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ hours: Number(hours) }),
+  });
+  if (!res.ok) { alert('Could not generate share link.'); return; }
+  const doc = await res.json();
+  const qrRes = await apiFetch(`/documents/${currentDocId}/share/qr/`);
+  if (qrRes.ok) {
+    document.getElementById('qr-image').src = URL.createObjectURL(await qrRes.blob());
+  }
+  document.getElementById('verify-link').value = `${window.location.origin}/verify/${doc.share_token}/`;
+  document.getElementById('share-meta').textContent =
+    `Expires ${new Date(doc.share_expires_at).toLocaleString()} · ${doc.share_max_views - doc.share_view_count} views left`;
+  document.getElementById('share-result').classList.remove('d-none');
+}
+
+document.getElementById('generate-btn').addEventListener('click', generateShareLink);
+document.getElementById('regenerate-btn').addEventListener('click', generateShareLink);
+
+async function openRequestModal(id) {
+  requestDocId = id;
+  document.getElementById('request-error').classList.add('d-none');
+  new bootstrap.Modal(document.getElementById('requestModal')).show();
+}
+
+async function populateRequestIssuers() {
+  const res = await apiFetch('/issuers/');
+  if (!res.ok) return;
+  const data = await res.json();
+  const select = document.getElementById('request-issuer-select');
+  select.innerHTML = '';
+  (data.results || data).forEach(i => {
+    const opt = document.createElement('option');
+    opt.value = i.id; opt.textContent = `${i.name} (${i.issuer_type})`;
+    select.appendChild(opt);
+  });
+}
+
+document.getElementById('request-submit-btn').addEventListener('click', async () => {
+  const errorBox = document.getElementById('request-error');
+  errorBox.classList.add('d-none');
+  const issuerId = document.getElementById('request-issuer-select').value;
+  const res = await apiFetch(`/documents/${requestDocId}/request-verification/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ issuer: Number(issuerId) }),
+  });
+  if (!res.ok) {
+    const data = await res.json();
+    errorBox.textContent = JSON.stringify(data);
+    errorBox.classList.remove('d-none');
+    return;
+  }
+  bootstrap.Modal.getInstance(document.getElementById('requestModal')).hide();
+  loadDocuments('doc-list');
+});
+
+// College verifies identity (Aadhaar) at admission; University awards marksheets/degrees -
+// a given issuer account can only ever issue the doc types matching its own institution type
+// (also enforced server-side in IssueDocumentView, this is just so the form doesn't offer
+// choices that would be rejected).
+const ISSUER_TYPE_DOC_TYPES = {
+  COLLEGE: ['AADHAAR', 'CERTIFICATE', 'OTHER'],
+  UNIVERSITY: ['MARKSHEET', 'DEGREE', 'CERTIFICATE', 'OTHER'],
+  GOVERNMENT: ['AADHAAR', 'OTHER'],
+};
+
+function filterIssueDocTypes(issuerType) {
+  const allowed = ISSUER_TYPE_DOC_TYPES[issuerType];
+  if (!allowed) return;
+  const select = document.getElementById('issue-doc-type');
+  [...select.options].forEach(opt => { opt.hidden = !allowed.includes(opt.value); });
+  if (select.selectedOptions[0]?.hidden) select.value = allowed[0];
+}
+
+function pendingCardHtml(doc) {
+  return `
+    <div class="card doc-card mb-2">
+      <div class="card-body py-2">
+        <div class="d-flex justify-content-between align-items-start">
+          <div>
+            <strong>${doc.title}</strong> <span class="text-muted small">(${doc.doc_type})</span><br>
+            <span class="small text-muted">from ${doc.owner_username} · requested ${new Date(doc.requested_at).toLocaleDateString()}</span>
+          </div>
+          <div class="text-end">
+            <button class="btn btn-sm btn-link p-0" onclick="downloadDoc(${doc.id}, '${doc.original_filename}')">Download</button><br>
+            <button class="btn btn-sm btn-success py-0 px-2 mt-1" onclick="reviewRequest(${doc.id}, 'approve')">Approve &amp; sign</button>
+            <button class="btn btn-sm btn-outline-danger py-0 px-2 mt-1 ms-1" onclick="reviewRequest(${doc.id}, 'reject')">Reject</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+}
+
+async function loadPendingRequests() {
+  const res = await apiFetch('/documents/?status=PENDING');
+  const target = document.getElementById('pending-list');
+  if (!res.ok) { target.innerHTML = '<p class="text-danger">Could not load pending requests.</p>'; return; }
+  const data = await res.json();
+  target.innerHTML = data.results.length
+    ? data.results.map(pendingCardHtml).join('')
+    : '<p class="text-muted">No pending requests.</p>';
+}
+
+async function reviewRequest(id, action) {
+  let note = '';
+  if (action === 'reject') {
+    note = prompt('Reason for rejection (shown to the student):') || '';
+    if (note === null) return;
+  }
+  const res = await apiFetch(`/documents/${id}/review/`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ action, note }),
+  });
+  if (!res.ok) { alert('Could not submit decision.'); return; }
+  loadPendingRequests();
+  loadDocuments('doc-list-issuer');
+}
+
+document.getElementById('upload-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorBox = document.getElementById('upload-error');
+  errorBox.classList.add('d-none');
+  const res = await apiFetch('/documents/upload/', { method: 'POST', body: new FormData(e.target) });
+  if (!res.ok) {
+    const data = await res.json();
+    errorBox.textContent = JSON.stringify(data);
+    errorBox.classList.remove('d-none');
+    return;
+  }
+  e.target.reset();
+  loadDocuments('doc-list');
+});
+
+document.getElementById('issue-form')?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const errorBox = document.getElementById('issue-error');
+  const successBox = document.getElementById('issue-success');
+  errorBox.classList.add('d-none');
+  successBox.classList.add('d-none');
+  const res = await apiFetch('/documents/issue/', { method: 'POST', body: new FormData(e.target) });
+  if (!res.ok) {
+    const data = await res.json();
+    errorBox.textContent = JSON.stringify(data);
+    errorBox.classList.remove('d-none');
+    return;
+  }
+  successBox.textContent = 'Document issued and digitally signed.';
+  successBox.classList.remove('d-none');
+  e.target.reset();
+  loadDocuments('doc-list-issuer');
+});
+
+(async () => {
+  const me = await requireAuth();
+  if (!me) return;
+  if (me.role === 'ISSUER') {
+    document.getElementById('issuer-view').classList.remove('d-none');
+    filterIssueDocTypes(me.issuer_type);
+    loadDocuments('doc-list-issuer');
+    loadPendingRequests();
+  } else {
+    document.getElementById('student-view').classList.remove('d-none');
+    populateRequestIssuers();
+    loadDocuments('doc-list');
+  }
+})();
+</script>
+{% endblock %}
