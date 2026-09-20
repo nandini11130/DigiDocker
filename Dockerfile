@@ -1,5 +1,7 @@
 FROM python:3.12-slim
 
+# Documentation note: this image is kept intentionally simple for the Django app.
+
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1
 

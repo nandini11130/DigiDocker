@@ -146,3 +146,7 @@ The project is designed to run as a containerized application behind Caddy with 
 
 DigiDocker combines secure digital identity workflows, document verification, and self-hosted infrastructure into a complete platform that feels ready for real usage. It connects issuer trust, student document management, and public verification in one system that is easy to run locally and deploy with Docker.
 
+## Notes
+
+This branch includes a documentation update for the QR-based verification flow and related project notes. No runtime behavior was changed as part of this update.
+
